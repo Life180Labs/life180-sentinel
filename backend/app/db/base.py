@@ -3,7 +3,12 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.core.config import settings
 
-engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
+# Railway Postgres provides postgresql:// but we need postgresql+psycopg:// for psycopg3
+_db_url = settings.DATABASE_URL
+if _db_url.startswith("postgresql://") or _db_url.startswith("postgres://"):
+    _db_url = "postgresql+psycopg://" + _db_url.split("://", 1)[1]
+
+engine = create_engine(_db_url, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
