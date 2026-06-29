@@ -3,7 +3,6 @@ import shutil
 import uuid
 from pathlib import Path
 
-import git
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -41,6 +40,8 @@ def clone_repository(db: Session, repo: Repository) -> Repository:
     db.commit()
 
     try:
+        import git  # lazy import — git binary must exist at clone time, not app startup
+
         logger.info("Cloning %s into %s", clone_url, clone_dir)
         if clone_dir.exists():
             shutil.rmtree(clone_dir)

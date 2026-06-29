@@ -1,2 +1,2 @@
-[packages.apt]
-packages = ["git"]
+[deploy]
+aptPackages = ["git"]
