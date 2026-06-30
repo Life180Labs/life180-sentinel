@@ -23,6 +23,7 @@ class Repository(Base):
     status: Mapped[str] = mapped_column(
         String(50), nullable=False, default="pending"
     )  # pending | cloning | cloned | scanning | scanned | evaluating | done | error
+    overall_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

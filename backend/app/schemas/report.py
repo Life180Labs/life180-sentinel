@@ -23,6 +23,7 @@ class ReportResponse(BaseModel):
     default_branch: str | None
     overall_score: int
     grade: str
+    overall_summary: str | None
     intelligence: IntelligenceResponse | None
     evaluations: list[CategoryEvaluationResponse]
     markdown_report: str

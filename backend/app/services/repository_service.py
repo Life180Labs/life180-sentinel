@@ -10,7 +10,7 @@ from app.core.logging import get_logger
 from app.models.evaluation import EvaluationResult
 from app.models.intelligence import RepositoryIntelligence
 from app.models.repository import Repository
-from app.services.evaluation.evaluator import evaluate_repository
+from app.services.evaluation.evaluator import evaluate_repository, generate_overall_summary
 from app.services.intelligence.scanner import scan_repository
 
 logger = get_logger(__name__)
@@ -129,6 +129,8 @@ def _run_evaluation(db: Session, repo: Repository, scan_result) -> None:
                     raw_response=ev.raw_response,
                 )
             )
+        overall_score = round(sum(ev.score for ev in evaluations) / len(evaluations)) if evaluations else 0
+        repo.overall_summary = generate_overall_summary(repo.name, repo.owner, overall_score, evaluations)
         repo.status = "done"
         db.commit()
         logger.info("Evaluation complete for repo %s", repo.id)

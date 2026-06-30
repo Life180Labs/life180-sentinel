@@ -56,6 +56,7 @@ export interface Report {
   default_branch: string | null;
   overall_score: number;
   grade: string;
+  overall_summary: string | null;
   evaluations: CategoryEvaluation[];
   markdown_report: string;
   generated_at: string;

@@ -74,6 +74,10 @@ def _build_markdown_report(
     lines.append(f"**Overall Score:** {overall_score}/100  **Grade:** {grade}")
     lines.append(f"**Generated:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
 
+    if repo.overall_summary:
+        lines.append("\n---\n\n## Executive Summary\n")
+        lines.append(repo.overall_summary)
+
     if intel:
         lines.append("\n---\n\n## Repository Overview\n")
         lines.append(intel.summary or "")
@@ -149,6 +153,7 @@ def get_report(db: Session, repo_id: uuid.UUID) -> ReportResponse | None:
         default_branch=repo.default_branch,
         overall_score=overall_score,
         grade=grade,
+        overall_summary=repo.overall_summary,
         intelligence=IntelligenceResponse.model_validate(intel) if intel else None,
         evaluations=[CategoryEvaluationResponse.model_validate(e) for e in evaluations],
         markdown_report=markdown,

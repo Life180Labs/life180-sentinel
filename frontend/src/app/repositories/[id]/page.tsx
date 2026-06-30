@@ -179,6 +179,22 @@ async function downloadPDF(report: Report) {
 
   y = 46;
 
+  // ── Executive Summary ────────────────────────────────────
+  if (report.overall_summary) {
+    checkY(20);
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 30, 30);
+    doc.text("Executive Summary", margin, y);
+    y += 6;
+    printWrapped(report.overall_summary, margin, contentW, 10, "normal", [40, 40, 40]);
+    y += 8;
+
+    doc.setDrawColor(200, 200, 200);
+    doc.line(margin, y, pageW - margin, y);
+    y += 8;
+  }
+
   // ── Summary scores table ─────────────────────────────────
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
@@ -314,14 +330,8 @@ export default function RepositoryReportPage({
   const sorted = [...report.evaluations].sort((a, b) => b.score - a.score);
   const filename = `${report.owner}-${report.name}-evaluation`;
 
-  // Derive summary highlights from evaluation data
   const strengths = sorted.slice(0, 3);
   const improvements = [...sorted].reverse().slice(0, 3);
-  const gradeLabel =
-    report.overall_score >= 90 ? "excellent" :
-    report.overall_score >= 75 ? "good" :
-    report.overall_score >= 60 ? "adequate" :
-    report.overall_score >= 40 ? "needs work" : "poor";
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -379,55 +389,44 @@ export default function RepositoryReportPage({
           </div>
         </section>
 
-        {/* Evaluation Summary */}
-        <section className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 space-y-5">
-          <div>
-            <h2 className="text-sm font-medium text-zinc-400 uppercase tracking-wider mb-2">
-              Evaluation Summary
-            </h2>
-            <p className="text-sm text-zinc-300 leading-relaxed">
-              <span className="font-semibold text-white">{report.owner}/{report.name}</span> scored{" "}
-              <span className="font-semibold text-white">{report.overall_score}/100</span> (grade{" "}
-              <span className="font-semibold text-white">{report.grade}</span>), which is considered{" "}
-              <span className="font-medium">{gradeLabel}</span> across {report.evaluations.length} evaluated categories.
-              {" "}The evaluation covers architecture, security, code quality, testing, and documentation based on
-              the repository structure and detected technologies.
-            </p>
-          </div>
+        {/* Executive Summary */}
+        <section className="rounded-xl border border-zinc-700 bg-zinc-900/60 p-6 space-y-5">
+          <h2 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">
+            Executive Summary
+          </h2>
 
-          <div className="grid sm:grid-cols-2 gap-4">
-            {/* Strengths */}
+          {report.overall_summary ? (
+            <p className="text-sm text-zinc-200 leading-relaxed">{report.overall_summary}</p>
+          ) : (
+            <p className="text-sm text-zinc-500 italic">
+              Summary not available for this evaluation. Re-evaluate the repository to generate one.
+            </p>
+          )}
+
+          <div className="grid sm:grid-cols-2 gap-4 pt-2 border-t border-zinc-800">
             <div className="space-y-2">
               <p className="text-xs font-medium text-emerald-400 uppercase tracking-wider">Top Strengths</p>
               <ul className="space-y-2">
                 {strengths.map((ev) => (
                   <li key={ev.category} className="flex items-start gap-2">
-                    <span className="mt-0.5 shrink-0 w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5" />
+                    <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5" />
                     <div>
                       <span className="text-xs font-medium capitalize text-zinc-200">{ev.category}</span>
                       <span className="text-xs text-zinc-500 ml-1.5">({ev.score}/100)</span>
-                      {ev.summary && (
-                        <p className="text-xs text-zinc-400 mt-0.5 line-clamp-2">{ev.summary}</p>
-                      )}
                     </div>
                   </li>
                 ))}
               </ul>
             </div>
-
-            {/* Areas for improvement */}
             <div className="space-y-2">
-              <p className="text-xs font-medium text-amber-400 uppercase tracking-wider">Areas for Improvement</p>
+              <p className="text-xs font-medium text-amber-400 uppercase tracking-wider">Needs Attention</p>
               <ul className="space-y-2">
                 {improvements.map((ev) => (
                   <li key={ev.category} className="flex items-start gap-2">
-                    <span className="mt-0.5 shrink-0 w-1.5 h-1.5 rounded-full bg-amber-500 mt-1.5" />
+                    <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-amber-500 mt-1.5" />
                     <div>
                       <span className="text-xs font-medium capitalize text-zinc-200">{ev.category}</span>
                       <span className="text-xs text-zinc-500 ml-1.5">({ev.score}/100)</span>
-                      {ev.summary && (
-                        <p className="text-xs text-zinc-400 mt-0.5 line-clamp-2">{ev.summary}</p>
-                      )}
                     </div>
                   </li>
                 ))}

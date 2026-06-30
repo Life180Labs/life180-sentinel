@@ -315,3 +315,53 @@ def _skipped(reason: str) -> list[CategoryEvaluation]:
         CategoryEvaluation(category=cat, score=0, summary=f"Evaluation skipped: {reason}")
         for cat in CATEGORIES
     ]
+
+
+_SUMMARY_SYSTEM_PROMPT = """\
+You are a senior engineering manager writing an executive summary for a non-technical audience \
+(product managers, QA leads, stakeholders). You will receive AI-generated scores and findings \
+from a code repository evaluation. Write a clear, jargon-free summary of 3-5 sentences that:
+- States the overall quality level in plain language
+- Highlights the 1-2 strongest areas
+- Calls out the 1-2 most important things to improve
+- Gives a bottom-line recommendation (e.g. "ready for production", "needs work before launch", "requires significant investment")
+Do NOT use bullet points. Write flowing prose only. Be direct and specific."""
+
+
+def generate_overall_summary(
+    repo_name: str,
+    owner: str,
+    overall_score: int,
+    evaluations: list[CategoryEvaluation],
+) -> str:
+    """Generate a plain-English executive summary suitable for non-technical stakeholders."""
+    lines = [f"Repository: {owner}/{repo_name}", f"Overall score: {overall_score}/100", ""]
+    for ev in sorted(evaluations, key=lambda e: e.score, reverse=True):
+        lines.append(f"{ev.category.capitalize()} ({ev.score}/100): {ev.summary or 'No summary.'}")
+    context = "\n".join(lines)
+
+    provider = settings.AI_PROVIDER.lower()
+    try:
+        if provider == "gemini" and settings.GEMINI_API_KEY:
+            import google.generativeai as genai
+            genai.configure(api_key=settings.GEMINI_API_KEY)
+            model = genai.GenerativeModel(
+                model_name="gemini-2.5-flash",
+                system_instruction=_SUMMARY_SYSTEM_PROMPT,
+                generation_config={"max_output_tokens": 512, "temperature": 0.4},
+            )
+            response = model.generate_content(context)
+            return (response.text or "").strip()
+        elif provider == "anthropic" and settings.ANTHROPIC_API_KEY:
+            import anthropic as _anthropic
+            client = _anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+            msg = client.messages.create(
+                model="claude-opus-4-8",
+                max_tokens=512,
+                system=_SUMMARY_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": context}],
+            )
+            return msg.content[0].text.strip() if msg.content else ""
+    except Exception as exc:
+        logger.warning("Overall summary generation failed: %s", exc)
+    return ""
