@@ -291,6 +291,8 @@ async function downloadPDF(report: Report) {
   doc.save(`${report.owner}-${report.name}-evaluation.pdf`);
 }
 
+const ACTIVE_STATUSES = ["pending", "cloning", "cloned", "scanning", "scanned", "evaluating"];
+
 export default function RepositoryReportPage({
   params,
 }: {
@@ -300,6 +302,7 @@ export default function RepositoryReportPage({
   const [report, setReport] = useState<Report | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [reEvaluating, setReEvaluating] = useState(false);
 
   useEffect(() => {
     api.reports
@@ -307,6 +310,36 @@ export default function RepositoryReportPage({
       .then(setReport)
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load report"));
   }, [id]);
+
+  // Poll while re-evaluation is in progress
+  useEffect(() => {
+    if (!reEvaluating) return;
+    const interval = setInterval(async () => {
+      try {
+        const repo = await api.repositories.get(id);
+        if (!ACTIVE_STATUSES.includes(repo.status)) {
+          setReEvaluating(false);
+          // Reload full report once done
+          const updated = await api.reports.get(id);
+          setReport(updated);
+        }
+      } catch {
+        setReEvaluating(false);
+      }
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [id, reEvaluating]);
+
+  const handleReEvaluate = async () => {
+    setReEvaluating(true);
+    setError(null);
+    try {
+      await api.repositories.reEvaluate(id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Re-evaluation failed");
+      setReEvaluating(false);
+    }
+  };
 
   if (error) {
     return (
@@ -366,26 +399,47 @@ export default function RepositoryReportPage({
             {report.default_branch && (
               <p className="text-xs text-zinc-500 mt-1">Branch: {report.default_branch}</p>
             )}
-            <div className="flex gap-2 mt-4">
+            <div className="flex flex-wrap gap-2 mt-4">
               <button
                 onClick={() =>
                   downloadBlob(report.markdown_report, `${filename}.md`, "text/markdown")
                 }
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium transition-colors"
+                disabled={reEvaluating}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium transition-colors disabled:opacity-40"
               >
                 ↓ Markdown
               </button>
               <button
-                disabled={pdfLoading}
+                disabled={pdfLoading || reEvaluating}
                 onClick={async () => {
                   setPdfLoading(true);
                   try { await downloadPDF(report); } finally { setPdfLoading(false); }
                 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium transition-colors disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium transition-colors disabled:opacity-40"
               >
                 {pdfLoading ? "Generating…" : "↓ PDF"}
               </button>
+              <button
+                disabled={reEvaluating}
+                onClick={handleReEvaluate}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-violet-600 bg-violet-700/30 hover:bg-violet-700/50 text-xs font-medium text-violet-300 transition-colors disabled:opacity-50"
+              >
+                {reEvaluating ? (
+                  <>
+                    <span className="animate-spin inline-block w-3 h-3 border border-violet-400 border-t-transparent rounded-full" />
+                    Re-evaluating…
+                  </>
+                ) : (
+                  "↻ Re-evaluate"
+                )}
+              </button>
             </div>
+
+            {reEvaluating && (
+              <p className="text-xs text-zinc-500 mt-2">
+                Fetching latest code and running fresh AI evaluation — this takes a few minutes…
+              </p>
+            )}
           </div>
         </section>
 

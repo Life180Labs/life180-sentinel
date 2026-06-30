@@ -39,6 +39,18 @@ def get_repository(repo_id: uuid.UUID, db: DbDep):
     return repo
 
 
+@router.post("/{repo_id}/re-evaluate", response_model=RepositoryResponse)
+def re_evaluate_repository(repo_id: uuid.UUID, background_tasks: BackgroundTasks, db: DbDep):
+    repo = repository_service.get_repository(db, repo_id)
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+    if repo.status in ("cloning", "scanning", "evaluating"):
+        raise HTTPException(status_code=409, detail="Evaluation already in progress")
+    repository_service.reset_repository(db, repo)
+    background_tasks.add_task(repository_service.clone_repository_background, repo.id)
+    return repo
+
+
 @router.delete("/{repo_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_repository(repo_id: uuid.UUID, db: DbDep):
     repo = repository_service.get_repository(db, repo_id)

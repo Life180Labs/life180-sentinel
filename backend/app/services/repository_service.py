@@ -141,6 +141,28 @@ def _run_evaluation(db: Session, repo: Repository, scan_result) -> None:
         db.commit()
 
 
+def reset_repository(db: Session, repo: Repository) -> Repository:
+    """Clear previous results and reset status so the repo can be re-evaluated from scratch."""
+    from app.models.evaluation import EvaluationResult
+    from app.models.intelligence import RepositoryIntelligence
+
+    db.query(EvaluationResult).filter(EvaluationResult.repository_id == repo.id).delete()
+    db.query(RepositoryIntelligence).filter(RepositoryIntelligence.repository_id == repo.id).delete()
+
+    if repo.local_path and os.path.exists(repo.local_path):
+        shutil.rmtree(repo.local_path, ignore_errors=True)
+
+    repo.local_path = None
+    repo.default_branch = None
+    repo.overall_summary = None
+    repo.error_message = None
+    repo.status = "pending"
+    db.commit()
+    db.refresh(repo)
+    logger.info("Repository %s reset for re-evaluation", repo.id)
+    return repo
+
+
 def get_repository(db: Session, repo_id: uuid.UUID) -> Repository | None:
     return db.get(Repository, repo_id)
 

@@ -73,6 +73,8 @@ export const api = {
       }),
     delete: (id: string) =>
       request<void>(`/api/v1/repositories/${id}`, { method: "DELETE" }),
+    reEvaluate: (id: string) =>
+      request<Repository>(`/api/v1/repositories/${id}/re-evaluate`, { method: "POST" }),
   },
   evaluations: {
     get: (id: string) => request<EvaluationSummary>(`/api/v1/repositories/${id}/evaluations`),
