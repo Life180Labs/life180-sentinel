@@ -188,21 +188,29 @@ def _build_markdown_report(
     return "\n".join(lines)
 
 
-def get_report(db: Session, repo_id: uuid.UUID) -> ReportResponse | None:
+def get_report(db: Session, repo_id: uuid.UUID, run: int | None = None) -> ReportResponse | None:
     repo = db.get(Repository, repo_id)
     if not repo:
         return None
 
-    intel = (
-        db.query(RepositoryIntelligence)
-        .filter(RepositoryIntelligence.repository_id == repo_id)
-        .first()
-    )
+    current_run = repo.eval_run or 1
+    effective_run = run if run is not None else current_run
+    is_current = effective_run == current_run
+
+    # Intelligence metadata only exists for the current run
+    intel = None
+    if is_current:
+        intel = (
+            db.query(RepositoryIntelligence)
+            .filter(RepositoryIntelligence.repository_id == repo_id)
+            .first()
+        )
+
     evaluations = (
         db.query(EvaluationResult)
         .filter(
             EvaluationResult.repository_id == repo_id,
-            EvaluationResult.eval_run == (repo.eval_run or 1),
+            EvaluationResult.eval_run == effective_run,
         )
         .order_by(EvaluationResult.category)
         .all()
@@ -210,6 +218,8 @@ def get_report(db: Session, repo_id: uuid.UUID) -> ReportResponse | None:
 
     overall_score = compute_overall_score(evaluations)
     grade = score_to_grade(overall_score)
+    # Executive summary only stored for the current run
+    overall_summary = repo.overall_summary if is_current else None
     markdown = _build_markdown_report(repo, intel, evaluations, overall_score, grade)
 
     return ReportResponse(
@@ -219,10 +229,10 @@ def get_report(db: Session, repo_id: uuid.UUID) -> ReportResponse | None:
         url=repo.url,
         status=repo.status,
         default_branch=repo.default_branch,
-        eval_run=repo.eval_run or 1,
+        eval_run=effective_run,
         overall_score=overall_score,
         grade=grade,
-        overall_summary=repo.overall_summary,
+        overall_summary=overall_summary,
         intelligence=IntelligenceResponse.model_validate(intel) if intel else None,
         evaluations=[CategoryEvaluationResponse.model_validate(e) for e in evaluations],
         markdown_report=markdown,

@@ -23,16 +23,16 @@ def get_repository_score(repo_id: uuid.UUID, db: DbDep):
 
 
 @router.get("/{repo_id}/report", response_model=ReportResponse)
-def get_repository_report(repo_id: uuid.UUID, db: DbDep):
-    report = get_report(db, repo_id)
+def get_repository_report(repo_id: uuid.UUID, db: DbDep, run: int | None = None):
+    report = get_report(db, repo_id, run=run)
     if not report:
         raise HTTPException(status_code=404, detail="Repository not found")
     return report
 
 
 @router.get("/{repo_id}/report/markdown", response_class=PlainTextResponse)
-def get_repository_report_markdown(repo_id: uuid.UUID, db: DbDep):
-    report = get_report(db, repo_id)
+def get_repository_report_markdown(repo_id: uuid.UUID, db: DbDep, run: int | None = None):
+    report = get_report(db, repo_id, run=run)
     if not report:
         raise HTTPException(status_code=404, detail="Repository not found")
     return report.markdown_report

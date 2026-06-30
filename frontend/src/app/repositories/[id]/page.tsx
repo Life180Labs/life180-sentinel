@@ -96,39 +96,89 @@ function ScoreRing({ score, grade }: { score: number; grade: string }) {
 
 // ─── Version history timeline ─────────────────────────────────────────────────
 
-function HistoryTimeline({ history, currentRun }: { history: EvaluationRun[]; currentRun: number }) {
+function HistoryTimeline({
+  history,
+  viewingRun,
+  currentRun,
+  onSelectRun,
+  loadingRun,
+}: {
+  history: EvaluationRun[];
+  viewingRun: number;
+  currentRun: number;
+  onSelectRun: (run: number) => void;
+  loadingRun: number | null;
+}) {
   if (history.length <= 1) return null;
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
-      <p className="text-xs font-medium text-zinc-400 uppercase tracking-wider mb-4">
-        Evaluation History — {history.length} run{history.length !== 1 ? "s" : ""}
-      </p>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-xs font-medium text-zinc-400 uppercase tracking-wider">
+          Evaluation History — {history.length} runs
+        </p>
+        {viewingRun !== currentRun && (
+          <button
+            onClick={() => onSelectRun(currentRun)}
+            className="text-xs text-violet-400 hover:text-violet-300 transition-colors"
+          >
+            ← Back to latest (Run #{currentRun})
+          </button>
+        )}
+      </div>
       <div className="flex flex-wrap gap-2">
         {history.map((run) => {
           const meta = GRADE_META[run.grade] ?? { color: "text-zinc-400", label: "" };
+          const isViewing = run.run === viewingRun;
           const isCurrent = run.run === currentRun;
+          const isLoading = loadingRun === run.run;
+          const delta = run.run > 1
+            ? (() => {
+                const prev = history.find((h) => h.run === run.run - 1);
+                if (!prev) return null;
+                const d = run.overall_score - prev.overall_score;
+                return d === 0 ? null : d;
+              })()
+            : null;
           return (
-            <div
+            <button
               key={run.run}
-              className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-lg border text-center min-w-[72px] ${
-                isCurrent
-                  ? "border-violet-600 bg-violet-900/30"
-                  : "border-zinc-700 bg-zinc-800/50"
+              onClick={() => !isViewing && onSelectRun(run.run)}
+              disabled={isViewing || isLoading !== false}
+              className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-lg border text-center min-w-[80px] transition-all ${
+                isViewing
+                  ? "border-violet-600 bg-violet-900/30 cursor-default"
+                  : "border-zinc-700 bg-zinc-800/50 hover:border-zinc-500 hover:bg-zinc-800 cursor-pointer"
               }`}
             >
-              <span className="text-[10px] text-zinc-500 font-medium">Run #{run.run}</span>
-              <span className={`text-lg font-bold tabular-nums ${meta.color}`}>{run.overall_score}</span>
-              <span className={`text-xs font-semibold ${meta.color}`}>{run.grade}</span>
+              <span className="text-[10px] text-zinc-500 font-medium">
+                Run #{run.run}{isCurrent ? " ✦" : ""}
+              </span>
+              {isLoading ? (
+                <span className="text-zinc-500 text-xs animate-pulse">…</span>
+              ) : (
+                <>
+                  <span className={`text-lg font-bold tabular-nums ${meta.color}`}>{run.overall_score}</span>
+                  <span className={`text-xs font-semibold ${meta.color}`}>{run.grade}</span>
+                </>
+              )}
+              {delta != null && (
+                <span className={`text-[9px] font-medium ${delta > 0 ? "text-emerald-400" : "text-red-400"}`}>
+                  {delta > 0 ? `+${delta}` : `${delta}`}
+                </span>
+              )}
               <span className="text-[9px] text-zinc-600">
                 {new Date(run.evaluated_at).toLocaleDateString()}
               </span>
-              {isCurrent && (
-                <span className="text-[9px] text-violet-400 font-medium">current</span>
+              {isViewing && (
+                <span className="text-[9px] text-violet-400 font-medium">viewing</span>
               )}
-            </div>
+            </button>
           );
         })}
       </div>
+      <p className="text-[10px] text-zinc-600 mt-3">
+        Click any run to view its full report and download options. ✦ = latest run.
+      </p>
     </div>
   );
 }
@@ -566,17 +616,22 @@ export default function RepositoryReportPage({ params }: { params: Promise<{ id:
   const { id } = use(params);
   const [report, setReport] = useState<Report | null>(null);
   const [history, setHistory] = useState<EvaluationRun[]>([]);
+  const [latestRun, setLatestRun] = useState<number>(1);
+  const [loadingRun, setLoadingRun] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [reEvaluating, setReEvaluating] = useState(false);
+
+  const loadHistory = (repoId: string) =>
+    api.repositories.history(repoId).then(setHistory).catch(() => {});
 
   useEffect(() => {
     api.reports
       .get(id)
       .then((r) => {
         setReport(r);
-        // Load history (best-effort — only shows if >1 run)
-        api.repositories.history(id).then(setHistory).catch(() => {});
+        setLatestRun(r.eval_run);
+        loadHistory(id);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load report"));
   }, [id]);
@@ -590,7 +645,8 @@ export default function RepositoryReportPage({ params }: { params: Promise<{ id:
           setReEvaluating(false);
           const updated = await api.reports.get(id);
           setReport(updated);
-          api.repositories.history(id).then(setHistory).catch(() => {});
+          setLatestRun(updated.eval_run);
+          loadHistory(id);
         }
       } catch {
         setReEvaluating(false);
@@ -598,6 +654,18 @@ export default function RepositoryReportPage({ params }: { params: Promise<{ id:
     }, 4000);
     return () => clearInterval(interval);
   }, [id, reEvaluating]);
+
+  const handleSelectRun = async (run: number) => {
+    setLoadingRun(run);
+    try {
+      const r = await api.reports.get(id, run);
+      setReport(r);
+    } catch {
+      // leave current report on error
+    } finally {
+      setLoadingRun(null);
+    }
+  };
 
   const handleReEvaluate = async () => {
     setReEvaluating(true);
@@ -628,10 +696,11 @@ export default function RepositoryReportPage({ params }: { params: Promise<{ id:
   }
 
   const sorted = [...report.evaluations].sort((a, b) => b.score - a.score);
-  const filename = `${report.owner}-${report.name}-evaluation`;
+  const filename = `${report.owner}-${report.name}-run${report.eval_run}`;
   const readiness = getReadiness(report.overall_score);
   const strengths = sorted.slice(0, 3);
   const improvements = [...sorted].reverse().slice(0, 3);
+  const isViewingHistory = report.eval_run !== latestRun;
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -640,7 +709,12 @@ export default function RepositoryReportPage({ params }: { params: Promise<{ id:
           <Link href="/" className="text-zinc-400 hover:text-zinc-200 text-sm transition-colors">← Dashboard</Link>
           <span className="text-zinc-700">/</span>
           <span className="text-sm font-medium">{report.owner}/{report.name}</span>
-          <span className="ml-auto text-xs text-zinc-600">Run #{report.eval_run}</span>
+          <span className="ml-2 text-xs text-zinc-600">Run #{report.eval_run}</span>
+          {isViewingHistory && (
+            <span className="ml-1 text-xs px-1.5 py-0.5 rounded bg-amber-900/50 text-amber-400 border border-amber-700">
+              historical
+            </span>
+          )}
         </div>
       </header>
 
@@ -671,7 +745,7 @@ export default function RepositoryReportPage({ params }: { params: Promise<{ id:
                 disabled={reEvaluating}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium transition-colors disabled:opacity-40"
               >
-                ↓ Markdown
+                ↓ Markdown {isViewingHistory && `(Run #${report.eval_run})`}
               </button>
               <button
                 disabled={pdfLoading || reEvaluating}
@@ -681,20 +755,22 @@ export default function RepositoryReportPage({ params }: { params: Promise<{ id:
                 }}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium transition-colors disabled:opacity-40"
               >
-                {pdfLoading ? "Generating…" : "↓ PDF"}
+                {pdfLoading ? "Generating…" : `↓ PDF${isViewingHistory ? ` (Run #${report.eval_run})` : ""}`}
               </button>
-              <button
-                disabled={reEvaluating}
-                onClick={handleReEvaluate}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-violet-600 bg-violet-700/30 hover:bg-violet-700/50 text-xs font-medium text-violet-300 transition-colors disabled:opacity-50"
-              >
-                {reEvaluating ? (
-                  <>
-                    <span className="animate-spin inline-block w-3 h-3 border border-violet-400 border-t-transparent rounded-full" />
-                    Re-evaluating…
-                  </>
-                ) : "↻ Re-evaluate"}
-              </button>
+              {!isViewingHistory && (
+                <button
+                  disabled={reEvaluating}
+                  onClick={handleReEvaluate}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-violet-600 bg-violet-700/30 hover:bg-violet-700/50 text-xs font-medium text-violet-300 transition-colors disabled:opacity-50"
+                >
+                  {reEvaluating ? (
+                    <>
+                      <span className="animate-spin inline-block w-3 h-3 border border-violet-400 border-t-transparent rounded-full" />
+                      Re-evaluating…
+                    </>
+                  ) : "↻ Re-evaluate"}
+                </button>
+              )}
             </div>
 
             {reEvaluating && (
@@ -702,12 +778,26 @@ export default function RepositoryReportPage({ params }: { params: Promise<{ id:
                 Fetching latest code and running fresh AI evaluation — this takes a few minutes…
               </p>
             )}
+            {isViewingHistory && (
+              <p className="text-xs text-amber-500/80">
+                Viewing historical run #{report.eval_run} — executive summary not available for past runs.
+                <button onClick={() => handleSelectRun(latestRun)} className="ml-1.5 underline hover:text-amber-400">
+                  Switch to latest
+                </button>
+              </p>
+            )}
           </div>
         </section>
 
         {/* Version history */}
         {history.length > 1 && (
-          <HistoryTimeline history={history} currentRun={report.eval_run} />
+          <HistoryTimeline
+            history={history}
+            viewingRun={report.eval_run}
+            currentRun={latestRun}
+            onSelectRun={handleSelectRun}
+            loadingRun={loadingRun}
+          />
         )}
 
         {/* Executive Summary */}

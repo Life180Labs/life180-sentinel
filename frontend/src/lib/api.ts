@@ -96,7 +96,8 @@ export const api = {
     get: (id: string) => request<EvaluationSummary>(`/api/v1/repositories/${id}/evaluations`),
   },
   reports: {
-    get: (id: string) => request<Report>(`/api/v1/repositories/${id}/report`),
+    get: (id: string, run?: number) =>
+      request<Report>(`/api/v1/repositories/${id}/report${run != null ? `?run=${run}` : ""}`),
     score: (id: string) => request<RepositoryScore>(`/api/v1/repositories/${id}/score`),
   },
 };

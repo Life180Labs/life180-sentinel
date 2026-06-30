@@ -408,7 +408,7 @@ def generate_overall_summary(
             model = genai.GenerativeModel(
                 model_name="gemini-2.5-flash",
                 system_instruction=_SUMMARY_SYSTEM_PROMPT,
-                generation_config={"max_output_tokens": 2048, "temperature": 0.3},
+                generation_config={"max_output_tokens": 8192, "temperature": 0.3},
             )
             response = model.generate_content(context)
             return (response.text or "").strip()
@@ -417,7 +417,7 @@ def generate_overall_summary(
             client = _anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
             msg = client.messages.create(
                 model="claude-opus-4-8",
-                max_tokens=2048,
+                max_tokens=8192,
                 system=_SUMMARY_SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": context}],
             )
