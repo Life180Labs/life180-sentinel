@@ -18,6 +18,7 @@ export interface Repository {
   owner: string;
   name: string;
   status: string;
+  eval_run: number;
   default_branch: string | null;
   error_message: string | null;
   created_at: string;
@@ -26,10 +27,14 @@ export interface Repository {
 export interface CategoryEvaluation {
   id: string;
   repository_id: string;
+  eval_run: number;
   category: string;
   score: number;
+  reasoning: string | null;
+  confidence: number | null;
   findings: string[];
   recommendations: string[];
+  recommendation_scores: number[] | null;
   summary: string | null;
   created_at: string;
 }
@@ -47,6 +52,14 @@ export interface RepositoryScore {
   category_scores: Record<string, number>;
 }
 
+export interface EvaluationRun {
+  run: number;
+  overall_score: number;
+  grade: string;
+  category_scores: Record<string, number>;
+  evaluated_at: string;
+}
+
 export interface Report {
   repository_id: string;
   owner: string;
@@ -54,6 +67,7 @@ export interface Report {
   url: string;
   status: string;
   default_branch: string | null;
+  eval_run: number;
   overall_score: number;
   grade: string;
   overall_summary: string | null;
@@ -75,6 +89,8 @@ export const api = {
       request<void>(`/api/v1/repositories/${id}`, { method: "DELETE" }),
     reEvaluate: (id: string) =>
       request<Repository>(`/api/v1/repositories/${id}/re-evaluate`, { method: "POST" }),
+    history: (id: string) =>
+      request<EvaluationRun[]>(`/api/v1/repositories/${id}/history`),
   },
   evaluations: {
     get: (id: string) => request<EvaluationSummary>(`/api/v1/repositories/${id}/evaluations`),

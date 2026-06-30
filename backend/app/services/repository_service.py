@@ -121,10 +121,14 @@ def _run_evaluation(db: Session, repo: Repository, scan_result) -> None:
             db.add(
                 EvaluationResult(
                     repository_id=repo.id,
+                    eval_run=repo.eval_run or 1,
                     category=ev.category,
                     score=ev.score,
+                    reasoning=ev.reasoning,
+                    confidence=ev.confidence,
                     findings=ev.findings,
                     recommendations=ev.recommendations,
+                    recommendation_scores=ev.recommendation_scores,
                     summary=ev.summary,
                     raw_response=ev.raw_response,
                 )
@@ -142,16 +146,16 @@ def _run_evaluation(db: Session, repo: Repository, scan_result) -> None:
 
 
 def reset_repository(db: Session, repo: Repository) -> Repository:
-    """Clear previous results and reset status so the repo can be re-evaluated from scratch."""
-    from app.models.evaluation import EvaluationResult
+    """Preserve old evaluation results (version history) and start a new run."""
     from app.models.intelligence import RepositoryIntelligence
 
-    db.query(EvaluationResult).filter(EvaluationResult.repository_id == repo.id).delete()
+    # Intelligence is technical metadata regenerated each run — not historically interesting
     db.query(RepositoryIntelligence).filter(RepositoryIntelligence.repository_id == repo.id).delete()
 
     if repo.local_path and os.path.exists(repo.local_path):
         shutil.rmtree(repo.local_path, ignore_errors=True)
 
+    repo.eval_run = (repo.eval_run or 1) + 1
     repo.local_path = None
     repo.default_branch = None
     repo.overall_summary = None
@@ -159,7 +163,7 @@ def reset_repository(db: Session, repo: Repository) -> Repository:
     repo.status = "pending"
     db.commit()
     db.refresh(repo)
-    logger.info("Repository %s reset for re-evaluation", repo.id)
+    logger.info("Repository %s reset for re-evaluation (now run #%d)", repo.id, repo.eval_run)
     return repo
 
 

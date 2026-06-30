@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, String, Text
+from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -23,6 +23,7 @@ class Repository(Base):
     status: Mapped[str] = mapped_column(
         String(50), nullable=False, default="pending"
     )  # pending | cloning | cloned | scanning | scanned | evaluating | done | error
+    eval_run: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     overall_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

@@ -5,8 +5,10 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.base import get_db
+from app.schemas.evaluation import EvaluationRunResponse
 from app.schemas.repository import RepositoryCreate, RepositoryResponse
 from app.services import repository_service
+from app.services.report_service import get_history
 
 router = APIRouter(prefix="/repositories", tags=["repositories"])
 
@@ -49,6 +51,14 @@ def re_evaluate_repository(repo_id: uuid.UUID, background_tasks: BackgroundTasks
     repository_service.reset_repository(db, repo)
     background_tasks.add_task(repository_service.clone_repository_background, repo.id)
     return repo
+
+
+@router.get("/{repo_id}/history", response_model=list[EvaluationRunResponse])
+def evaluation_history(repo_id: uuid.UUID, db: DbDep):
+    repo = repository_service.get_repository(db, repo_id)
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+    return get_history(db, repo_id)
 
 
 @router.delete("/{repo_id}", status_code=status.HTTP_204_NO_CONTENT)

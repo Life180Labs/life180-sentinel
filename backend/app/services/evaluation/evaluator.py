@@ -86,9 +86,12 @@ to the actual source code — base your evaluation on what is structurally obser
 Respond ONLY with a valid JSON object in this exact format:
 {
   "score": <integer 0-100>,
-  "findings": [<string>, ...],
-  "recommendations": [<string>, ...],
-  "summary": "<string>"
+  "reasoning": "<2-3 sentences explaining WHY this exact score — cite specific observable evidence from the structure>",
+  "confidence": <integer 0-100: your confidence in this score given the available structural data>,
+  "findings": ["1. <concrete observation>", "2. <observation>", ...],
+  "recommendations": ["1. <actionable recommendation>", "2. <recommendation>", ...],
+  "recommendation_scores": [<score points this recommendation adds if implemented, integer 1-20>, ...],
+  "summary": "<1-2 sentence plain-English overview>"
 }
 
 Scoring guide:
@@ -98,9 +101,12 @@ Scoring guide:
 - 40-59: Needs work — significant gaps or anti-patterns present
 - 0-39: Poor — major issues, missing fundamentals
 
-Findings: concrete observations (what you see or notably don't see).
-Recommendations: actionable improvements, ordered by priority.
-Summary: 2-3 sentence overall assessment for this category.
+Rules:
+- findings: numbered list ("1.", "2.", ...) of concrete observations.
+- recommendations: numbered list ("1.", "2.", ...) of actionable improvements ordered by priority.
+- recommendation_scores: parallel array — MUST have same length as recommendations; each value is
+  the estimated score points gained from implementing that recommendation (integer 1-20).
+- summary: 1-2 sentences.
 Return 3-6 findings and 3-5 recommendations. Be specific and practical."""
 
 
@@ -136,7 +142,7 @@ def _build_user_message(repo_name: str, owner: str, scan: ScanResult, category: 
     )
 
 
-def _parse_json_response(raw: str, category: str) -> tuple[int, list[str], list[str], str]:
+def _parse_json_response(raw: str, category: str) -> tuple[int, str, int, list[str], list[str], list[int], str]:
     """Extract score/findings/recommendations/summary from a raw JSON response string.
 
     Handles both bare JSON and JSON wrapped in markdown code fences.
@@ -151,22 +157,36 @@ def _parse_json_response(raw: str, category: str) -> tuple[int, list[str], list[
             if json_match:
                 data = json.loads(json_match.group())
                 score = max(0, min(100, int(data.get("score", 0))))
+                reasoning = str(data.get("reasoning", ""))
+                confidence = max(0, min(100, int(data.get("confidence", 50))))
                 findings = [str(f) for f in data.get("findings", [])]
                 recommendations = [str(r) for r in data.get("recommendations", [])]
+                raw_rec_scores = data.get("recommendation_scores", [])
+                recommendation_scores = [
+                    max(0, min(20, int(s))) for s in raw_rec_scores
+                    if isinstance(s, (int, float))
+                ]
+                # Pad/trim to match recommendations length
+                while len(recommendation_scores) < len(recommendations):
+                    recommendation_scores.append(5)
+                recommendation_scores = recommendation_scores[: len(recommendations)]
                 summary = str(data.get("summary", ""))
-                return score, findings, recommendations, summary
+                return score, reasoning, confidence, findings, recommendations, recommendation_scores, summary
         except (json.JSONDecodeError, ValueError, TypeError) as exc:
             logger.warning("Failed to parse evaluation JSON for %s: %s", category, exc)
 
-    return 50, [], [], raw[:500] if raw else "Evaluation parsing failed."
+    return 50, "", 50, [], [], [], raw[:500] if raw else "Evaluation parsing failed."
 
 
 @dataclass
 class CategoryEvaluation:
     category: str
     score: int = 0
+    reasoning: str = ""
+    confidence: int = 50
     findings: list[str] = field(default_factory=list)
     recommendations: list[str] = field(default_factory=list)
+    recommendation_scores: list[int] = field(default_factory=list)
     summary: str = ""
     raw_response: str = ""
 
@@ -200,13 +220,16 @@ def _evaluate_category_anthropic(
             raw = block.text
             break
 
-    score, findings, recommendations, summary = _parse_json_response(raw, category)
-    logger.info("[anthropic] Category '%s' score: %d", category, score)
+    score, reasoning, confidence, findings, recommendations, recommendation_scores, summary = _parse_json_response(raw, category)
+    logger.info("[anthropic] Category '%s' score: %d (confidence: %d)", category, score, confidence)
     return CategoryEvaluation(
         category=category,
         score=score,
+        reasoning=reasoning,
+        confidence=confidence,
         findings=findings,
         recommendations=recommendations,
+        recommendation_scores=recommendation_scores,
         summary=summary,
         raw_response=raw,
     )
@@ -248,13 +271,16 @@ def _evaluate_category_gemini(
     response = model.generate_content(user_msg)
     raw = response.text or ""
 
-    score, findings, recommendations, summary = _parse_json_response(raw, category)
-    logger.info("[gemini] Category '%s' score: %d", category, score)
+    score, reasoning, confidence, findings, recommendations, recommendation_scores, summary = _parse_json_response(raw, category)
+    logger.info("[gemini] Category '%s' score: %d (confidence: %d)", category, score, confidence)
     return CategoryEvaluation(
         category=category,
         score=score,
+        reasoning=reasoning,
+        confidence=confidence,
         findings=findings,
         recommendations=recommendations,
+        recommendation_scores=recommendation_scores,
         summary=summary,
         raw_response=raw,
     )
@@ -323,32 +349,30 @@ stakeholders — product managers, QA leads, and business owners. You will recei
 scores and findings from an AI code review of a software repository.
 
 Write a structured report with exactly these five sections. Use the bold header shown, \
-followed by 3-5 sentences of plain-English prose. Never use bullet points. Never use \
-technical jargon without immediately explaining it in everyday terms.
+then write exactly 3-5 numbered points per section. Each numbered point is 1-2 plain-English \
+sentences. Never write unbroken paragraphs — use numbered points only. If a point needs \
+a sub-detail, add it as a lettered sub-point (a. b.) on the next line. Never use technical \
+jargon without explaining it in plain terms.
 
 **What Works Well**
-Describe genuine strengths. What parts of this product are solid? What gives confidence \
-that the team knows what they are doing? What is already working reliably?
+Number 3-5 genuine strengths. What is already solid? What gives confidence?
 
 **What Needs Attention**
-Describe the weak areas in business terms. What is incomplete or fragile? How will these \
-gaps show up as the product grows or the team changes? What is the real-world risk of \
-leaving these issues unaddressed?
+Number 3-5 weak areas in business terms. What is fragile or incomplete?
+How will these gaps affect the product as it grows?
 
 **Security Concerns**
-Explain security issues as if talking to someone who has never written code. What user \
-data or business systems are at risk? What could go wrong — data breach, unauthorized \
-access, compliance failure? How serious is the exposure? If there are no significant \
-concerns, say so clearly.
+Number 3-5 security issues explained without jargon. What user data or systems are at risk? \
+What could go wrong — data breach, unauthorised access, compliance failure? \
+If no significant concerns, state that clearly as point 1.
 
 **Performance & Reliability Risks**
-Describe where the application will struggle. Give concrete failure scenarios in business \
-terms: slow page loads, crashes under traffic, data loss during peak hours. How many \
-concurrent users would trigger problems? What business impact would that have?
+Number 3-5 concrete failure scenarios: slow page loads, crashes under load, data loss. \
+Give a real-world example for each — what business event would trigger the failure?
 
 **Bottom Line**
-One clear paragraph: is this ready for production use today, or not? State the single \
-most important action the team must take next. Be direct — avoid hedging."""
+3 numbered points: (1) production readiness verdict, (2) single most important action, \
+(3) expected timeline to address critical issues."""
 
 
 def generate_overall_summary(

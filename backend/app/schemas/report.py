@@ -21,6 +21,7 @@ class ReportResponse(BaseModel):
     url: str
     status: str
     default_branch: str | None
+    eval_run: int
     overall_score: int
     grade: str
     overall_summary: str | None

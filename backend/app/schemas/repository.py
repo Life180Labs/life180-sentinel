@@ -30,6 +30,7 @@ class RepositoryResponse(BaseModel):
     description: str | None
     local_path: str | None
     status: str
+    eval_run: int = 1
     error_message: str | None
     created_at: datetime
     updated_at: datetime
