@@ -314,6 +314,15 @@ export default function RepositoryReportPage({
   const sorted = [...report.evaluations].sort((a, b) => b.score - a.score);
   const filename = `${report.owner}-${report.name}-evaluation`;
 
+  // Derive summary highlights from evaluation data
+  const strengths = sorted.slice(0, 3);
+  const improvements = [...sorted].reverse().slice(0, 3);
+  const gradeLabel =
+    report.overall_score >= 90 ? "excellent" :
+    report.overall_score >= 75 ? "good" :
+    report.overall_score >= 60 ? "adequate" :
+    report.overall_score >= 40 ? "needs work" : "poor";
+
   return (
     <div className="flex flex-col min-h-screen">
       <header className="border-b border-zinc-800 px-6 py-4">
@@ -329,6 +338,7 @@ export default function RepositoryReportPage({
       </header>
 
       <main className="flex-1 max-w-5xl mx-auto w-full px-6 py-10 space-y-10">
+        {/* Hero: score + meta + downloads */}
         <section className="flex flex-col sm:flex-row gap-8 items-start">
           <ScoreRing score={report.overall_score} grade={report.grade} />
           <div className="flex-1">
@@ -346,8 +356,6 @@ export default function RepositoryReportPage({
             {report.default_branch && (
               <p className="text-xs text-zinc-500 mt-1">Branch: {report.default_branch}</p>
             )}
-
-            {/* Download buttons */}
             <div className="flex gap-2 mt-4">
               <button
                 onClick={() =>
@@ -361,11 +369,7 @@ export default function RepositoryReportPage({
                 disabled={pdfLoading}
                 onClick={async () => {
                   setPdfLoading(true);
-                  try {
-                    await downloadPDF(report);
-                  } finally {
-                    setPdfLoading(false);
-                  }
+                  try { await downloadPDF(report); } finally { setPdfLoading(false); }
                 }}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium transition-colors disabled:opacity-50"
               >
@@ -375,6 +379,64 @@ export default function RepositoryReportPage({
           </div>
         </section>
 
+        {/* Evaluation Summary */}
+        <section className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 space-y-5">
+          <div>
+            <h2 className="text-sm font-medium text-zinc-400 uppercase tracking-wider mb-2">
+              Evaluation Summary
+            </h2>
+            <p className="text-sm text-zinc-300 leading-relaxed">
+              <span className="font-semibold text-white">{report.owner}/{report.name}</span> scored{" "}
+              <span className="font-semibold text-white">{report.overall_score}/100</span> (grade{" "}
+              <span className="font-semibold text-white">{report.grade}</span>), which is considered{" "}
+              <span className="font-medium">{gradeLabel}</span> across {report.evaluations.length} evaluated categories.
+              {" "}The evaluation covers architecture, security, code quality, testing, and documentation based on
+              the repository structure and detected technologies.
+            </p>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            {/* Strengths */}
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-emerald-400 uppercase tracking-wider">Top Strengths</p>
+              <ul className="space-y-2">
+                {strengths.map((ev) => (
+                  <li key={ev.category} className="flex items-start gap-2">
+                    <span className="mt-0.5 shrink-0 w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5" />
+                    <div>
+                      <span className="text-xs font-medium capitalize text-zinc-200">{ev.category}</span>
+                      <span className="text-xs text-zinc-500 ml-1.5">({ev.score}/100)</span>
+                      {ev.summary && (
+                        <p className="text-xs text-zinc-400 mt-0.5 line-clamp-2">{ev.summary}</p>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Areas for improvement */}
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-amber-400 uppercase tracking-wider">Areas for Improvement</p>
+              <ul className="space-y-2">
+                {improvements.map((ev) => (
+                  <li key={ev.category} className="flex items-start gap-2">
+                    <span className="mt-0.5 shrink-0 w-1.5 h-1.5 rounded-full bg-amber-500 mt-1.5" />
+                    <div>
+                      <span className="text-xs font-medium capitalize text-zinc-200">{ev.category}</span>
+                      <span className="text-xs text-zinc-500 ml-1.5">({ev.score}/100)</span>
+                      {ev.summary && (
+                        <p className="text-xs text-zinc-400 mt-0.5 line-clamp-2">{ev.summary}</p>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        {/* Category breakdown */}
         <section>
           <h2 className="text-sm font-medium text-zinc-400 uppercase tracking-wider mb-4">
             Category Evaluations
