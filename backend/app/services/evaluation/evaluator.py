@@ -318,14 +318,37 @@ def _skipped(reason: str) -> list[CategoryEvaluation]:
 
 
 _SUMMARY_SYSTEM_PROMPT = """\
-You are a senior engineering manager writing an executive summary for a non-technical audience \
-(product managers, QA leads, stakeholders). You will receive AI-generated scores and findings \
-from a code repository evaluation. Write a clear, jargon-free summary of 3-5 sentences that:
-- States the overall quality level in plain language
-- Highlights the 1-2 strongest areas
-- Calls out the 1-2 most important things to improve
-- Gives a bottom-line recommendation (e.g. "ready for production", "needs work before launch", "requires significant investment")
-Do NOT use bullet points. Write flowing prose only. Be direct and specific."""
+You are a senior engineering manager writing a detailed evaluation report for non-technical \
+stakeholders — product managers, QA leads, and business owners. You will receive category \
+scores and findings from an AI code review of a software repository.
+
+Write a structured report with exactly these five sections. Use the bold header shown, \
+followed by 3-5 sentences of plain-English prose. Never use bullet points. Never use \
+technical jargon without immediately explaining it in everyday terms.
+
+**What Works Well**
+Describe genuine strengths. What parts of this product are solid? What gives confidence \
+that the team knows what they are doing? What is already working reliably?
+
+**What Needs Attention**
+Describe the weak areas in business terms. What is incomplete or fragile? How will these \
+gaps show up as the product grows or the team changes? What is the real-world risk of \
+leaving these issues unaddressed?
+
+**Security Concerns**
+Explain security issues as if talking to someone who has never written code. What user \
+data or business systems are at risk? What could go wrong — data breach, unauthorized \
+access, compliance failure? How serious is the exposure? If there are no significant \
+concerns, say so clearly.
+
+**Performance & Reliability Risks**
+Describe where the application will struggle. Give concrete failure scenarios in business \
+terms: slow page loads, crashes under traffic, data loss during peak hours. How many \
+concurrent users would trigger problems? What business impact would that have?
+
+**Bottom Line**
+One clear paragraph: is this ready for production use today, or not? State the single \
+most important action the team must take next. Be direct — avoid hedging."""
 
 
 def generate_overall_summary(
@@ -334,10 +357,23 @@ def generate_overall_summary(
     overall_score: int,
     evaluations: list[CategoryEvaluation],
 ) -> str:
-    """Generate a plain-English executive summary suitable for non-technical stakeholders."""
-    lines = [f"Repository: {owner}/{repo_name}", f"Overall score: {overall_score}/100", ""]
+    """Generate a detailed plain-English evaluation report for non-technical stakeholders."""
+    lines = [
+        f"Repository: {owner}/{repo_name}",
+        f"Overall score: {overall_score}/100",
+        "",
+        "Category scores and findings:",
+        "",
+    ]
     for ev in sorted(evaluations, key=lambda e: e.score, reverse=True):
-        lines.append(f"{ev.category.capitalize()} ({ev.score}/100): {ev.summary or 'No summary.'}")
+        lines.append(f"{ev.category.capitalize()} — {ev.score}/100")
+        if ev.summary:
+            lines.append(f"Summary: {ev.summary}")
+        if ev.findings:
+            lines.append("Key findings: " + " | ".join(ev.findings[:3]))
+        if ev.recommendations:
+            lines.append("Top recommendations: " + " | ".join(ev.recommendations[:2]))
+        lines.append("")
     context = "\n".join(lines)
 
     provider = settings.AI_PROVIDER.lower()
@@ -348,7 +384,7 @@ def generate_overall_summary(
             model = genai.GenerativeModel(
                 model_name="gemini-2.5-flash",
                 system_instruction=_SUMMARY_SYSTEM_PROMPT,
-                generation_config={"max_output_tokens": 512, "temperature": 0.4},
+                generation_config={"max_output_tokens": 2048, "temperature": 0.3},
             )
             response = model.generate_content(context)
             return (response.text or "").strip()
@@ -357,7 +393,7 @@ def generate_overall_summary(
             client = _anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
             msg = client.messages.create(
                 model="claude-opus-4-8",
-                max_tokens=512,
+                max_tokens=2048,
                 system=_SUMMARY_SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": context}],
             )

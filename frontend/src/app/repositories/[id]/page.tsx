@@ -4,32 +4,82 @@ import Link from "next/link";
 import { use, useEffect, useState } from "react";
 import { api, Report } from "@/lib/api";
 
-const GRADE_COLORS: Record<string, string> = {
-  "A+": "text-emerald-400",
-  A: "text-emerald-400",
-  "A-": "text-emerald-400",
-  "B+": "text-green-400",
-  B: "text-green-400",
-  "B-": "text-green-400",
-  "C+": "text-yellow-400",
-  C: "text-yellow-400",
-  "C-": "text-yellow-400",
-  D: "text-orange-400",
-  F: "text-red-400",
+const GRADE_META: Record<string, { color: string; label: string; sublabel: string }> = {
+  "A+": { color: "text-emerald-400", label: "Exceptional",       sublabel: "Industry-leading quality" },
+  "A":  { color: "text-emerald-400", label: "Excellent",         sublabel: "Production ready" },
+  "A-": { color: "text-emerald-400", label: "Very Good",         sublabel: "Production ready, minor gaps" },
+  "B+": { color: "text-green-400",   label: "Good",              sublabel: "Production ready with improvements" },
+  "B":  { color: "text-green-400",   label: "Above Average",     sublabel: "Stable, some work needed" },
+  "B-": { color: "text-green-400",   label: "Satisfactory",      sublabel: "Works, but gaps to address" },
+  "C+": { color: "text-yellow-400",  label: "Adequate",          sublabel: "Needs improvement before launch" },
+  "C":  { color: "text-yellow-400",  label: "Below Average",     sublabel: "Significant issues present" },
+  "C-": { color: "text-yellow-400",  label: "Needs Work",        sublabel: "Not recommended for production" },
+  "D":  { color: "text-orange-400",  label: "Poor",              sublabel: "Major rework required" },
+  "F":  { color: "text-red-400",     label: "Critical",          sublabel: "Fundamental issues, not shippable" },
+};
+
+// Parse the structured summary into labelled sections
+function parseSummarySections(text: string): { heading: string; body: string }[] {
+  const sectionPattern = /\*\*(.+?)\*\*/g;
+  const sections: { heading: string; body: string }[] = [];
+  let match: RegExpExecArray | null;
+  const parts: { heading: string; start: number }[] = [];
+
+  while ((match = sectionPattern.exec(text)) !== null) {
+    parts.push({ heading: match[1], start: match.index + match[0].length });
+  }
+
+  for (let i = 0; i < parts.length; i++) {
+    const end = i + 1 < parts.length
+      ? text.lastIndexOf("**", parts[i + 1].start - 2)
+      : text.length;
+    const body = text.slice(parts[i].start, end).trim();
+    if (body) sections.push({ heading: parts[i].heading, body });
+  }
+
+  return sections;
+}
+
+const SECTION_ICONS: Record<string, string> = {
+  "What Works Well":               "✓",
+  "What Needs Attention":          "!",
+  "Security Concerns":             "🔒",
+  "Performance & Reliability Risks": "⚡",
+  "Bottom Line":                   "→",
+};
+
+const SECTION_COLORS: Record<string, string> = {
+  "What Works Well":               "border-emerald-700 bg-emerald-950/40",
+  "What Needs Attention":          "border-amber-700 bg-amber-950/40",
+  "Security Concerns":             "border-red-700 bg-red-950/40",
+  "Performance & Reliability Risks": "border-orange-700 bg-orange-950/40",
+  "Bottom Line":                   "border-violet-700 bg-violet-950/40",
+};
+
+const SECTION_HEADING_COLORS: Record<string, string> = {
+  "What Works Well":               "text-emerald-400",
+  "What Needs Attention":          "text-amber-400",
+  "Security Concerns":             "text-red-400",
+  "Performance & Reliability Risks": "text-orange-400",
+  "Bottom Line":                   "text-violet-400",
 };
 
 function ScoreRing({ score, grade }: { score: number; grade: string }) {
-  const gradeColor = GRADE_COLORS[grade] ?? "text-zinc-400";
+  const meta = GRADE_META[grade] ?? { color: "text-zinc-400", label: "Unknown", sublabel: "" };
   const barColor =
     score >= 80 ? "bg-emerald-500" : score >= 60 ? "bg-yellow-500" : "bg-red-500";
 
   return (
-    <div className="flex flex-col items-center gap-1">
-      <span className={`text-5xl font-bold tabular-nums ${gradeColor}`}>{score}</span>
-      <span className={`text-2xl font-semibold ${gradeColor}`}>{grade}</span>
+    <div className="flex flex-col items-center gap-1 min-w-[110px]">
+      <span className={`text-5xl font-bold tabular-nums ${meta.color}`}>{score}</span>
+      <div className="flex items-center gap-1.5">
+        <span className={`text-2xl font-semibold ${meta.color}`}>{grade}</span>
+        <span className={`text-xs font-medium ${meta.color} opacity-80`}>— {meta.label}</span>
+      </div>
       <div className="w-24 h-1.5 rounded-full bg-zinc-700 mt-1">
         <div className={`h-full rounded-full ${barColor}`} style={{ width: `${score}%` }} />
       </div>
+      <span className="text-[10px] text-zinc-500 text-center mt-0.5">{meta.sublabel}</span>
     </div>
   );
 }
@@ -174,8 +224,12 @@ async function downloadPDF(report: Report) {
   doc.setFont("helvetica", "bold");
   doc.setTextColor(...scoreColor);
   doc.text(`${report.overall_score}`, pageW - margin - 18, 18, { align: "right" });
+  const gradeMeta = GRADE_META[report.grade] ?? { label: "", sublabel: "" };
   doc.setFontSize(11);
   doc.text(report.grade, pageW - margin - 18, 27, { align: "right" });
+  doc.setFontSize(7);
+  doc.setTextColor(140, 140, 160);
+  doc.text(gradeMeta.label, pageW - margin - 18, 33, { align: "right" });
 
   y = 46;
 
@@ -186,9 +240,24 @@ async function downloadPDF(report: Report) {
     doc.setFont("helvetica", "bold");
     doc.setTextColor(30, 30, 30);
     doc.text("Executive Summary", margin, y);
-    y += 6;
-    printWrapped(report.overall_summary, margin, contentW, 10, "normal", [40, 40, 40]);
-    y += 8;
+    y += 7;
+
+    const sections = parseSummarySections(report.overall_summary);
+    if (sections.length > 0) {
+      for (const sec of sections) {
+        checkY(18);
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(60, 60, 80);
+        doc.text(sec.heading, margin, y);
+        y += 5;
+        printWrapped(sec.body, margin + 2, contentW - 2, 9, "normal", [50, 50, 50]);
+        y += 4;
+      }
+    } else {
+      printWrapped(report.overall_summary, margin, contentW, 10, "normal", [40, 40, 40]);
+    }
+    y += 4;
 
     doc.setDrawColor(200, 200, 200);
     doc.line(margin, y, pageW - margin, y);
@@ -450,7 +519,29 @@ export default function RepositoryReportPage({
           </h2>
 
           {report.overall_summary ? (
-            <p className="text-sm text-zinc-200 leading-relaxed">{report.overall_summary}</p>
+            (() => {
+              const sections = parseSummarySections(report.overall_summary!);
+              return sections.length > 0 ? (
+                <div className="space-y-4">
+                  {sections.map((sec) => (
+                    <div
+                      key={sec.heading}
+                      className={`rounded-lg border p-4 ${SECTION_COLORS[sec.heading] ?? "border-zinc-700 bg-zinc-800/40"}`}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-base">{SECTION_ICONS[sec.heading] ?? "•"}</span>
+                        <h3 className={`text-sm font-semibold ${SECTION_HEADING_COLORS[sec.heading] ?? "text-zinc-300"}`}>
+                          {sec.heading}
+                        </h3>
+                      </div>
+                      <p className="text-sm text-zinc-300 leading-relaxed">{sec.body}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-zinc-200 leading-relaxed">{report.overall_summary}</p>
+              );
+            })()
           ) : (
             <p className="text-sm text-zinc-500 italic">
               Summary not available for this evaluation. Re-evaluate the repository to generate one.
