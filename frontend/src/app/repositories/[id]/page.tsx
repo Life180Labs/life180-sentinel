@@ -96,6 +96,17 @@ function ScoreRing({ score, grade }: { score: number; grade: string }) {
 
 // ─── Version history timeline ─────────────────────────────────────────────────
 
+function fmtDate(iso: string) {
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+function fmtTime(iso: string) {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+function fmtDatetime(iso: string) {
+  return `${fmtDate(iso)}  ${fmtTime(iso)}`;
+}
+
 function HistoryTimeline({
   history,
   viewingRun,
@@ -144,7 +155,7 @@ function HistoryTimeline({
               key={run.run}
               onClick={() => !isViewing && onSelectRun(run.run)}
               disabled={isViewing || isLoading !== false}
-              className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-lg border text-center min-w-[80px] transition-all ${
+              className={`flex flex-col items-center gap-0.5 px-3 py-2 rounded-lg border text-center min-w-[90px] transition-all ${
                 isViewing
                   ? "border-violet-600 bg-violet-900/30 cursor-default"
                   : "border-zinc-700 bg-zinc-800/50 hover:border-zinc-500 hover:bg-zinc-800 cursor-pointer"
@@ -166,11 +177,14 @@ function HistoryTimeline({
                   {delta > 0 ? `+${delta}` : `${delta}`}
                 </span>
               )}
-              <span className="text-[9px] text-zinc-600">
-                {new Date(run.evaluated_at).toLocaleDateString()}
+              <span className="text-[9px] text-zinc-600 leading-tight">
+                {fmtDate(run.evaluated_at)}
+              </span>
+              <span className="text-[9px] text-zinc-700">
+                {fmtTime(run.evaluated_at)}
               </span>
               {isViewing && (
-                <span className="text-[9px] text-violet-400 font-medium">viewing</span>
+                <span className="text-[9px] text-violet-400 font-medium mt-0.5">viewing</span>
               )}
             </button>
           );
@@ -194,6 +208,7 @@ function CategoryCard({
   recommendations,
   recommendation_scores,
   summary,
+  created_at,
 }: {
   category: string;
   score: number;
@@ -203,6 +218,7 @@ function CategoryCard({
   recommendations: string[];
   recommendation_scores: number[] | null;
   summary: string | null;
+  created_at: string;
 }) {
   const [open, setOpen] = useState(false);
   const barColor = score >= 80 ? "bg-emerald-500" : score >= 60 ? "bg-yellow-500" : "bg-red-500";
@@ -238,6 +254,11 @@ function CategoryCard({
 
       {open && (
         <div className="px-5 pb-5 border-t border-zinc-800 pt-4 space-y-4">
+          {/* Evaluated at timestamp */}
+          <p className="text-[10px] text-zinc-600 -mt-1">
+            Evaluated: {fmtDatetime(created_at)}
+          </p>
+
           {summary && <p className="text-sm text-zinc-300">{summary}</p>}
 
           {/* Score reasoning + confidence */}
@@ -389,7 +410,10 @@ async function downloadPDF(report: Report) {
   doc.setFont("helvetica", "normal");
   doc.setTextColor(160, 160, 180);
   doc.text(report.url, margin, 20);
-  doc.text(`Run #${report.eval_run}  |  Generated: ${new Date(report.generated_at).toLocaleString()}`, margin, 26);
+  const evalTs = report.evaluations.length > 0
+    ? new Date(Math.max(...report.evaluations.map((e) => new Date(e.created_at).getTime()))).toLocaleString()
+    : new Date(report.generated_at).toLocaleString();
+  doc.text(`Run #${report.eval_run}  |  Evaluated: ${evalTs}`, margin, 26);
 
   // Production readiness badge
   doc.setFontSize(8);
@@ -697,6 +721,9 @@ export default function RepositoryReportPage({ params }: { params: Promise<{ id:
 
   const sorted = [...report.evaluations].sort((a, b) => b.score - a.score);
   const filename = `${report.owner}-${report.name}-run${report.eval_run}`;
+  const evaluatedAt = sorted.length > 0
+    ? new Date(Math.max(...sorted.map((e) => new Date(e.created_at).getTime())))
+    : null;
   const readiness = getReadiness(report.overall_score);
   const strengths = sorted.slice(0, 3);
   const improvements = [...sorted].reverse().slice(0, 3);
@@ -731,6 +758,11 @@ export default function RepositoryReportPage({ params }: { params: Promise<{ id:
             </a>
             {report.default_branch && (
               <p className="text-xs text-zinc-500">Branch: {report.default_branch}</p>
+            )}
+            {evaluatedAt && (
+              <p className="text-xs text-zinc-500">
+                Evaluated: <span className="text-zinc-400">{fmtDatetime(evaluatedAt.toISOString())}</span>
+              </p>
             )}
 
             {/* Production readiness banner */}
@@ -883,6 +915,7 @@ export default function RepositoryReportPage({ params }: { params: Promise<{ id:
                 recommendations={ev.recommendations}
                 recommendation_scores={ev.recommendation_scores}
                 summary={ev.summary}
+                created_at={ev.created_at}
               />
             ))}
           </div>
