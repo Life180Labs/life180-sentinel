@@ -437,7 +437,9 @@ async function downloadPDF(report: Report) {
   doc.setTextColor(140, 140, 160);
   doc.text(gradeMeta.label, pageW - margin - 20, 33, { align: "right" });
 
-  y = 50;
+  // Page 1 is reserved for the header + Table of Contents (filled in below, once
+  // real page numbers are known); all report content starts on page 2.
+  addPage();
 
   // ── Executive Summary ────────────────────────────────────────────────────────
   if (report.overall_summary) {
@@ -589,13 +591,13 @@ async function downloadPDF(report: Report) {
     y += 10;
   }
 
-  // ── Table of Contents page (appended at end) ─────────────────────────────────
-  doc.addPage();
-  const tocPageNum = currentPage();
+  // ── Table of Contents (filled in on page 1, below the header, now that the
+  //    real page numbers for every section are known) ──────────────────────────
+  doc.setPage(1);
   (doc as unknown as { outline: { add(parent: null, title: string, opts: { pageNumber: number }): void } })
-    .outline.add(null, "Table of Contents", { pageNumber: tocPageNum });
+    .outline.add(null, "Table of Contents", { pageNumber: 1 });
 
-  y = margin;
+  y = 50;
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(30, 30, 30);
