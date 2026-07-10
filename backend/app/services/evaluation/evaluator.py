@@ -344,35 +344,15 @@ def _skipped(reason: str) -> list[CategoryEvaluation]:
 
 
 _SUMMARY_SYSTEM_PROMPT = """\
-You are a senior engineering manager writing a detailed evaluation report for non-technical \
+You are a senior engineering manager writing a brief executive summary for non-technical \
 stakeholders — product managers, QA leads, and business owners. You will receive category \
 scores and findings from an AI code review of a software repository.
 
-Write a structured report with exactly these five sections. Use the bold header shown, \
-then write exactly 3-5 numbered points per section. Each numbered point is 1-2 plain-English \
-sentences. Never write unbroken paragraphs — use numbered points only. If a point needs \
-a sub-detail, add it as a lettered sub-point (a. b.) on the next line. Never use technical \
-jargon without explaining it in plain terms.
-
-**What Works Well**
-Number 3-5 genuine strengths. What is already solid? What gives confidence?
-
-**What Needs Attention**
-Number 3-5 weak areas in business terms. What is fragile or incomplete?
-How will these gaps affect the product as it grows?
-
-**Security Concerns**
-Number 3-5 security issues explained without jargon. What user data or systems are at risk? \
-What could go wrong — data breach, unauthorised access, compliance failure? \
-If no significant concerns, state that clearly as point 1.
-
-**Performance & Reliability Risks**
-Number 3-5 concrete failure scenarios: slow page loads, crashes under load, data loss. \
-Give a real-world example for each — what business event would trigger the failure?
-
-**Bottom Line**
-3 numbered points: (1) production readiness verdict, (2) single most important action, \
-(3) expected timeline to address critical issues."""
+Write exactly 2-3 numbered points and nothing else — no headers, no bold text, no preamble, \
+no closing remarks. Each point is 1-2 plain-English sentences, covering only the most \
+important takeaways: overall production readiness, the single biggest risk or gap, and \
+(if a third point is warranted) the most important next action. Never use technical jargon \
+without explaining it in plain terms."""
 
 
 def generate_overall_summary(
@@ -381,7 +361,7 @@ def generate_overall_summary(
     overall_score: int,
     evaluations: list[CategoryEvaluation],
 ) -> str:
-    """Generate a detailed plain-English evaluation report for non-technical stakeholders."""
+    """Generate a brief 2-3 point plain-English executive summary for non-technical stakeholders."""
     lines = [
         f"Repository: {owner}/{repo_name}",
         f"Overall score: {overall_score}/100",
@@ -408,7 +388,7 @@ def generate_overall_summary(
             model = genai.GenerativeModel(
                 model_name="gemini-2.5-flash",
                 system_instruction=_SUMMARY_SYSTEM_PROMPT,
-                generation_config={"max_output_tokens": 8192, "temperature": 0.3},
+                generation_config={"max_output_tokens": 500, "temperature": 0.3},
             )
             response = model.generate_content(context)
             return (response.text or "").strip()
@@ -417,7 +397,7 @@ def generate_overall_summary(
             client = _anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
             msg = client.messages.create(
                 model="claude-opus-4-8",
-                max_tokens=8192,
+                max_tokens=500,
                 system=_SUMMARY_SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": context}],
             )

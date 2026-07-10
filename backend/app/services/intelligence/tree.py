@@ -1,6 +1,7 @@
 """Build a compact repository tree (max depth / max nodes)."""
 from __future__ import annotations
 
+from collections import deque
 from pathlib import Path
 
 from app.services.intelligence.detectors import _IGNORE_DIRS
@@ -10,35 +11,42 @@ _MAX_NODES = 300
 
 
 def build_tree(root: Path, max_depth: int = _MAX_DEPTH, max_nodes: int = _MAX_NODES) -> dict:
-    """Return a nested dict representing the directory tree."""
-    counter = [0]
+    """Return a nested dict representing the directory tree.
 
-    def _walk(path: Path, depth: int) -> dict | None:
-        if depth > max_depth or counter[0] >= max_nodes:
-            return None
-        node: dict = {"name": path.name, "type": "dir", "children": []}
-        counter[0] += 1
+    Traversal is breadth-first so every top-level directory is captured before the
+    node budget is spent descending into any single subtree (a depth-first walk would
+    let an early, large sibling — e.g. "backend" sorting before "frontend" — exhaust
+    the whole budget and make later siblings vanish from the scan entirely).
+    """
+    root_node: dict = {"name": root.name, "type": "dir", "children": []}
+    count = 1
+    queue: deque[tuple[Path, dict, int]] = deque([(root, root_node, 0)])
+
+    while queue:
+        path, node, depth = queue.popleft()
+        if depth >= max_depth:
+            continue
         try:
             entries = sorted(path.iterdir(), key=lambda p: (p.is_file(), p.name.lower()))
         except PermissionError:
-            return node
+            continue
         for entry in entries:
             if entry.name in _IGNORE_DIRS:
                 continue
-            if counter[0] >= max_nodes:
-                node["children"].append({"name": "...", "type": "truncated"})
-                break
+            if count >= max_nodes:
+                if not node["children"] or node["children"][-1].get("type") != "truncated":
+                    node["children"].append({"name": "...", "type": "truncated"})
+                continue
             if entry.is_dir():
-                child = _walk(entry, depth + 1)
-                if child:
-                    node["children"].append(child)
+                child: dict = {"name": entry.name, "type": "dir", "children": []}
+                node["children"].append(child)
+                count += 1
+                queue.append((entry, child, depth + 1))
             else:
                 node["children"].append({"name": entry.name, "type": "file"})
-                counter[0] += 1
-        return node
+                count += 1
 
-    tree = _walk(root, 0)
-    return tree or {"name": root.name, "type": "dir", "children": []}
+    return root_node
 
 
 def tree_to_text(node: dict, indent: int = 0) -> str:
