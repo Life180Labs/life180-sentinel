@@ -61,3 +61,19 @@ def test_tree_to_text(sample_repo: Path) -> None:
     text = tree_to_text(tree)
     assert "src" in text
     assert "Dockerfile" in text
+
+
+def test_tree_captures_all_top_level_dirs_when_early_sibling_is_huge(tmp_path: Path) -> None:
+    """A large 'backend' subtree must not starve the node budget before 'frontend' is visited."""
+    backend = tmp_path / "backend"
+    backend.mkdir()
+    for i in range(500):
+        (backend / f"file_{i}.py").write_text("")
+    frontend = tmp_path / "frontend"
+    frontend.mkdir()
+    (frontend / "index.tsx").write_text("")
+
+    tree = build_tree(tmp_path, max_nodes=50)
+    top_level_names = {child["name"] for child in tree["children"]}
+    assert "frontend" in top_level_names
+    assert "backend" in top_level_names

@@ -58,16 +58,19 @@ const SECTION_HEADING_COLORS: Record<string, string> = {
   "Bottom Line":                    "text-violet-400",
 };
 
+const KNOWN_SUMMARY_HEADINGS = Object.keys(SECTION_ICONS);
+
 function parseSummarySections(text: string): { heading: string; body: string }[] {
-  const sectionPattern = /\*\*(.+?)\*\*/g;
-  const parts: { heading: string; start: number }[] = [];
+  const escaped = KNOWN_SUMMARY_HEADINGS.map((h) => h.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const sectionPattern = new RegExp(`\\*\\*(${escaped.join("|")})\\*\\*`, "g");
+  const parts: { heading: string; index: number; start: number }[] = [];
   let match: RegExpExecArray | null;
   while ((match = sectionPattern.exec(text)) !== null) {
-    parts.push({ heading: match[1], start: match.index + match[0].length });
+    parts.push({ heading: match[1], index: match.index, start: match.index + match[0].length });
   }
   const sections: { heading: string; body: string }[] = [];
   for (let i = 0; i < parts.length; i++) {
-    const end = i + 1 < parts.length ? text.lastIndexOf("**", parts[i + 1].start - 2) : text.length;
+    const end = i + 1 < parts.length ? parts[i + 1].index : text.length;
     const body = text.slice(parts[i].start, end).trim();
     if (body) sections.push({ heading: parts[i].heading, body });
   }
